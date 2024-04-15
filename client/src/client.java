@@ -1,4 +1,3 @@
-
 import java.io.*;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -6,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 public class client {
-    public static long birlestir(byte reserved1, int bodyLength, byte reserved2, byte statusCode, int timestamp, int messageID, int queryType, byte messageType) {
+    public static long combine(byte reserved1, int bodyLength, byte reserved2, byte statusCode, int timestamp, int messageID, int queryType, byte messageType) {
         // header package is created
         long paket = 0L;
         paket |= (reserved1 & 0xFFL);
@@ -19,7 +18,7 @@ public class client {
         paket |= (messageType & 0x01L)<<63;
         return paket;
     }
-    public static byte[] birlestirHeaderBody(long header, byte[] body) {
+    public static byte[] combineHeaderBody(long header, byte[] body) {
         // header and body are combined into one package
         byte[] paketBytes = new byte[8 + body.length];
         for (int i = 0; i < 8; i++) {
@@ -39,7 +38,7 @@ public class client {
         byte statusCode=0;
         int timestamp=0;
         int messageID;
-        int queryType=0;
+        int queryType;
         byte messageType=0;
         int hour;
         int minute;
@@ -47,7 +46,6 @@ public class client {
         int day;
         int month;
         int year;
-        int timestamp2;
         String date;
         String text = " ";
         String fileName=" ";
@@ -68,41 +66,6 @@ public class client {
                 messageID = scanner.nextInt();
             }
 
-            // first packet to the server
-            long header4 = birlestir(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, queryType, messageType);
-            byte[] bodyBytes4 = text.getBytes(StandardCharsets.UTF_8);
-            byte[] paketBytes4 = birlestirHeaderBody(header4, bodyBytes4);
-            outputStream.write(paketBytes4);
-
-            // the first packet from the server
-            byte[] receivedPacket4 = new byte[300];
-            int bytesRead4 = inputStream.read(receivedPacket4);
-            if (bytesRead4 == -1) {
-                return;
-            }
-            byte[] headerBytes4 = new byte[8];
-            System.arraycopy(receivedPacket4, 0, headerBytes4, 0, headerBytes4.length);
-            long headerFromsender4 = 0;
-            for (int i = 0; i < headerBytes4.length; i++) {
-                headerFromsender4 |= (headerBytes4[i] & 0xFFL) << (headerBytes4.length - 1 - i) * 8;
-            }
-            int statusCodefromserver4 = (int) ((headerFromsender4 >> 21) & 0x07);
-            String statusCodeFromServer4 = String.format("%3s", Integer.toBinaryString(statusCodefromserver4)).replace(' ', '0');
-
-            // actions taken according to the first packet coming from the server
-            if (statusCodeFromServer4.equals("100")) {
-                System.out.println("Response from server: ");
-                System.out.println("Status Code: 0b" + statusCodeFromServer4);
-                socket.close();
-                socket.close();
-            }
-            else if(statusCodeFromServer4.equals("101") )
-            {
-                System.out.println("Response from server: ");
-                System.out.println("Status Code: 0b" + statusCodeFromServer4);
-            }
-
-            // data to be received from the user for any query type before the first submission
             System.out.println("Please select one of the queryType and enter number: ");
             System.out.println("0 - Verify directory existence");
             System.out.println("1 - Check file existence");
@@ -121,13 +84,13 @@ public class client {
                 directoryPath=text;
             }
 
-            // second packet to the server
-            long header = birlestir(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, queryType, messageType);
+            // first packet to the server
+            long header = combine(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, queryType, messageType);
             byte[] bodyBytes = text.getBytes(StandardCharsets.UTF_8);
-            byte[] paketBytes = birlestirHeaderBody(header, bodyBytes);
+            byte[] paketBytes = combineHeaderBody(header, bodyBytes);
             outputStream.write(paketBytes);
 
-            // the second packet from the server
+            // the first packet from the server
             byte[] receivedPacket = new byte[300];
             int bytesRead = inputStream.read(receivedPacket);
             if (bytesRead == -1) {
@@ -140,8 +103,37 @@ public class client {
                 headerFromsender |= (headerBytes[i] & 0xFFL) << (headerBytes.length - 1 - i) * 8;
             }
             int statusCodefromserver = (int) ((headerFromsender >> 21) & 0x07);
-            int querytypeFromServer = (int)  ((headerFromsender >> 61) & 0x03L);
             String statusCodeFromServer = String.format("%3s", Integer.toBinaryString(statusCodefromserver)).replace(' ', '0');
+
+            // actions taken according to the first packet coming from the server
+            if (statusCodeFromServer.equals("100") || statusCodeFromServer.equals("101")) {
+                System.out.println("Response from server: ");
+                System.out.println("Status Code: 0b" + statusCodeFromServer);
+                socket.close();
+                socket.close();
+            }
+
+
+            // second packet to the server
+            header = combine(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, queryType, messageType);
+            bodyBytes = text.getBytes(StandardCharsets.UTF_8);
+            paketBytes = combineHeaderBody(header, bodyBytes);
+            outputStream.write(paketBytes);
+
+            // the second packet from the server
+            receivedPacket = new byte[300];
+            bytesRead = inputStream.read(receivedPacket);
+            if (bytesRead == -1) {
+                return;
+            }
+            System.arraycopy(receivedPacket, 0, headerBytes, 0, headerBytes.length);
+            headerFromsender = 0;
+            for (int i = 0; i < headerBytes.length; i++) {
+                headerFromsender |= (headerBytes[i] & 0xFFL) << (headerBytes.length - 1 - i) * 8;
+            }
+            statusCodefromserver = (int) ((headerFromsender >> 21) & 0x07);
+            int querytypeFromServer = (int)  ((headerFromsender >> 61) & 0x03L);
+            statusCodeFromServer = String.format("%3s", Integer.toBinaryString(statusCodefromserver)).replace(' ', '0');
 
 
             // data to be received from the user for any query type before the first submission
@@ -160,13 +152,13 @@ public class client {
                 }
                 else if(statusCodeFromServer.equals("000"))
                 {
-                    long header2 = birlestir(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, querytypeFromServer, messageType);
+                    header = combine(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, querytypeFromServer, messageType);
                     System.out.println("Path is available. Please enter the file name that want to query: ");
                     fileName = scanner.next();
                     String fullBody = directoryPath + "\\" + fileName;
-                    byte[] bodyBytes2 = fullBody.getBytes(StandardCharsets.UTF_8);
-                    byte[] paketBytes2 = birlestirHeaderBody(header2, bodyBytes2);
-                    outputStream2.write(paketBytes2); // server a giden ikinci gönderim
+                    bodyBytes = fullBody.getBytes(StandardCharsets.UTF_8);
+                    paketBytes = combineHeaderBody(header, bodyBytes);
+                    outputStream2.write(paketBytes); // second packet to the server
                 }
             }
             else if(queryType==3)
@@ -192,12 +184,12 @@ public class client {
                     hour = Integer.parseInt(datePieces[3]);
                     minute = Integer.parseInt(datePieces[4]);
                     second = Integer.parseInt(datePieces[5]);
-                    timestamp2= (hour<<27) + (minute<<21) + (second<<15) + (day<<10) + (month<<6) + year;
+                    timestamp= (hour<<27) + (minute<<21) + (second<<15) + (day<<10) + (month<<6) + year;
                     // third packet to the server
-                    long header2 = birlestir(reserved1, bodyLength, reserved2, statusCode, timestamp2, messageID, querytypeFromServer, messageType);
-                    byte[] bodyBytes2 = fileType.getBytes(StandardCharsets.UTF_8);
-                    byte[] paketBytes2 = birlestirHeaderBody(header2, bodyBytes2);
-                    outputStream2.write(paketBytes2);
+                    header = combine(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, querytypeFromServer, messageType);
+                    bodyBytes = fileType.getBytes(StandardCharsets.UTF_8);
+                    paketBytes = combineHeaderBody(header, bodyBytes);
+                    outputStream2.write(paketBytes);
                 }
             }
 
@@ -205,34 +197,32 @@ public class client {
             if(((queryType==1)&&statusCodeFromServer.equals("000"))||((queryType==2)&&statusCodeFromServer.equals("000"))||((queryType==3)&&statusCodeFromServer.equals("000")))
             {
                 // the third packet from the server
-                byte[] receivedPacket2 = new byte[300];
-                int bytesRead2 = inputStream.read(receivedPacket2);
-                if (bytesRead2 == -1) {
+                receivedPacket = new byte[300];
+                bytesRead = inputStream.read(receivedPacket);
+                if (bytesRead == -1) {
                     return;
                 }
-                byte[] headerBytes2 = new byte[8];
-                System.arraycopy(receivedPacket2, 0, headerBytes2, 0, headerBytes2.length);
-                long headerFromsender2 = 0;
-                for (int i = 0; i < headerBytes2.length; i++) {
-                    headerFromsender2 |= (headerBytes2[i] & 0xFFL) << (headerBytes2.length - 1 - i) * 8;
+                System.arraycopy(receivedPacket, 0, headerBytes, 0, headerBytes.length);
+                for (int i = 0; i < headerBytes.length; i++) {
+                    headerFromsender |= (headerBytes[i] & 0xFFL) << (headerBytes.length - 1 - i) * 8;
                 }
-                byte[] bodyBytes2 = new byte[receivedPacket2.length - 8];
-                System.arraycopy(receivedPacket2, 8, bodyBytes2, 0, bodyBytes2.length);
-                int statusCodefromserver2 = (int) ((headerFromsender2 >> 21) & 0x07);
-                int querytypeFromServer2 = (int)  ((headerFromsender2 >> 61) & 0x03L);
-                String statusCodeFromServer2 = String.format("%3s", Integer.toBinaryString(statusCodefromserver2)).replace(' ', '0');
-                String bodyString2 = new String(bodyBytes2, StandardCharsets.UTF_8).replaceAll("\0", "");
+                bodyBytes = new byte[receivedPacket.length - 8];
+                System.arraycopy(receivedPacket, 8, bodyBytes, 0, bodyBytes.length);
+                statusCodefromserver = (int) ((headerFromsender >> 21) & 0x07);
+                querytypeFromServer = (int)  ((headerFromsender >> 61) & 0x03L);
+                statusCodeFromServer = String.format("%3s", Integer.toBinaryString(statusCodefromserver)).replace(' ', '0');
+                String bodyString = new String(bodyBytes, StandardCharsets.UTF_8).replaceAll("\0", "");
 
                 // actions to be taken for each query type or parameters to be received from the user according to the data coming from the server
-                if(querytypeFromServer2==1)
+                if(querytypeFromServer==1)
                 {
                     System.out.println("Response from server: ");
-                    System.out.println("Status Code: 0b" + statusCodeFromServer2);
+                    System.out.println("Status Code: 0b" + statusCodeFromServer);
                     socket.close();
                 }
-                else if(querytypeFromServer2==2)
+                else if(querytypeFromServer==2)
                 {
-                    if(statusCodeFromServer2.equals("000"))
+                    if(statusCodeFromServer.equals("000"))
                     {
                         System.out.println("File is available.");
                         System.out.println("Enter the specific date with format: year/month/day/hour/minute/second");
@@ -246,57 +236,56 @@ public class client {
                         hour = Integer.parseInt(datePieces[3]);
                         minute = Integer.parseInt(datePieces[4]);
                         second = Integer.parseInt(datePieces[5]);
-                        timestamp2= (hour<<27) + (minute<<21) + (second<<15) + (day<<10) + (month<<6) + year;
+                        timestamp= (hour<<27) + (minute<<21) + (second<<15) + (day<<10) + (month<<6) + year;
                         // fourth packet to the server
-                        long header3 = birlestir(reserved1, bodyLength, reserved2, statusCode, timestamp2, messageID, querytypeFromServer2, messageType);
+                        header = combine(reserved1, bodyLength, reserved2, statusCode, timestamp, messageID, querytypeFromServer, messageType);
                         String fullBody = " ";
-                        byte[] bodyBytes3 = fullBody.getBytes(StandardCharsets.UTF_8);
-                        byte[] paketBytes3 = birlestirHeaderBody(header3, bodyBytes3);
-                        outputStream2.write(paketBytes3);
+                        bodyBytes = fullBody.getBytes(StandardCharsets.UTF_8);
+                        paketBytes = combineHeaderBody(header, bodyBytes);
+                        outputStream2.write(paketBytes);
                     }
-                    else if(statusCodeFromServer2.equals("001"))
+                    else if(statusCodeFromServer.equals("001"))
                     {
                         System.out.println("Response from server: ");
-                        System.out.println("Status Code: 0b" + statusCodeFromServer2);
+                        System.out.println("Status Code: 0b" + statusCodeFromServer);
                         socket.close();
                     }
                 }
 
                 // Extra operations that need to be done for some query types
-                if(querytypeFromServer2==3)
+                if(querytypeFromServer==3)
                 {
-                    if(statusCodeFromServer2.equals("001"))
+                    if(statusCodeFromServer.equals("001"))
                     {
                         System.out.println("Response from server: ");
-                        System.out.println("Status Code: 0b" + statusCodeFromServer2);
+                        System.out.println("Status Code: 0b" + statusCodeFromServer);
                         socket.close();
                     }
-                    else if(statusCodeFromServer2.equals("111"))
+                    else if(statusCodeFromServer.equals("111"))
                     {
                         System.out.println("Response from server: ");
-                        System.out.println("Status Code: 0b" + statusCodeFromServer2);
-                        System.out.println(bodyString2);
+                        System.out.println("Status Code: 0b" + statusCodeFromServer);
+                        System.out.println(bodyString);
                         socket.close();
                     }
                 }
-                if((querytypeFromServer2==2)||(statusCodeFromServer2.equals("000")))
+                if((querytypeFromServer==2)||(statusCodeFromServer.equals("000")))
                 {
                     // the fourth packet from the server
-                    byte[] receivedPacket3 = new byte[300];
-                    int bytesRead3 = inputStream.read(receivedPacket3);
-                    if (bytesRead3 == -1) {
+                    receivedPacket = new byte[300];
+                    bytesRead = inputStream.read(receivedPacket);
+                    if (bytesRead == -1) {
                         return;
                     }
-                    byte[] headerBytes3 = new byte[8];
-                    System.arraycopy(receivedPacket3, 0, headerBytes3, 0, headerBytes3.length);
-                    long headerFromsender3 = 0;
-                    for (int i = 0; i < headerBytes3.length; i++) {
-                        headerFromsender3 |= (headerBytes3[i] & 0xFFL) << (headerBytes3.length - 1 - i) * 8;
+                    System.arraycopy(receivedPacket, 0, headerBytes, 0, headerBytes.length);
+                    headerFromsender = 0;
+                    for (int i = 0; i < headerBytes.length; i++) {
+                        headerFromsender |= (headerBytes[i] & 0xFFL) << (headerBytes.length - 1 - i) * 8;
                     }
-                    int statusCodefromserver3 = (int) ((headerFromsender3 >> 21) & 0x07);
-                    String statusCodeFromServer3 = String.format("%3s", Integer.toBinaryString(statusCodefromserver3)).replace(' ', '0');
+                    statusCodefromserver = (int) ((headerFromsender >> 21) & 0x07);
+                    statusCodeFromServer = String.format("%3s", Integer.toBinaryString(statusCodefromserver)).replace(' ', '0');
                     System.out.println("Response from server: ");
-                    System.out.println("Status Code: 0b" + statusCodeFromServer3);
+                    System.out.println("Status Code: 0b" + statusCodeFromServer);
                 }
             }
             scanner.close();
